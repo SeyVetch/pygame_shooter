@@ -61,13 +61,13 @@ ProjStats = {
 ItemStats = {
     "MedicalKit": 
     {
-        "OnUse": ('Heal', 50),
+        "OnUse": ('Heal', 50, True),
         "ImageFold": "MedKit",
         "ImageStates": {"default": ("medkit.png", (40, 40), (1, 1))}
     },
     "Bgun": 
     {
-        "OnUse": ('Heal', 50),
+        "OnUse": ('Shoot', 50, False),
         "ImageFold": "Bgun",
         "ImageStates": {"default": ("Bgun.png", (40, 40), (1, 1))}
     }
