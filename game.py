@@ -4,7 +4,6 @@ scale = 1
 width = height = 600
 screen = pygame.display.set_mode((600, 600))
 
-
 all_sprites = pygame.sprite.Group()
 solid = pygame.sprite.Group()
 projectiles = pygame.sprite.Group()
@@ -13,18 +12,22 @@ items = pygame.sprite.Group()
 players = pygame.sprite.Group()
 data_shown = pygame.sprite.Group()
 
+hero_alive = False
+
 
 def refresh():
-    global all_sprites, solid, projectiles, enemies
+    global inventory_hero
+    for i in players:
+        if hero_alive and len(enemies) == 0:
+            inventory_hero = i.items.copy()
     for i in all_sprites:
         i.kill()
         del i
     for i in data_shown:
         i.kill()
         del i
-    
-
-refresh()
+    inventory_hero = PlayerInventory(None)
+        
 
 clock = pygame.time.Clock()
     
@@ -50,9 +53,11 @@ def start_screen():
 
 def StartGame(WIDTH, HEIGHT, lvl):
     global width, height, player, all_sprites, solid, \
-           projectiles, enemies, players, items, data_shown
+           projectiles, enemies, players, items, data_shown, display
     
     refresh()
+
+    display = EnemiesDislay()
     
     width = WIDTH
     height = HEIGHT
@@ -63,6 +68,8 @@ def StartGame(WIDTH, HEIGHT, lvl):
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     
     player = Player((WIDTH//2, HEIGHT//2), [all_sprites, players])
+    player.items = inventory_hero.copy()
+    player.items.host = player
 
     running = True
     camera = Camera()
@@ -72,6 +79,11 @@ def StartGame(WIDTH, HEIGHT, lvl):
         
         if pygame.key.get_pressed()[pygame.K_SPACE] == 1:
             running = False
+        if pygame.key.get_pressed()[pygame.K_q] == 1:
+            for i in enemies:
+                i.kill()
+                del i
+            enemies = pygame.sprite.Group()
             
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -108,7 +120,10 @@ def StartGame(WIDTH, HEIGHT, lvl):
         
         clock.tick(FPS)
     
-    StartGame(WIDTH, HEIGHT, lvl)
+    if len(enemies) > 0:
+        StartGame(WIDTH, HEIGHT, lvl)
+    else:
+        StartGame(WIDTH, HEIGHT, lvl+1)
 
 
 def load_image(name, color_key=None):
@@ -146,12 +161,14 @@ class Camera:
         
         
 class Projectile(pygame.sprite.Sprite):
-    def __init__(self, pos, team, vel=(0, 0, 1)):
+    def __init__(self, pos, team, t, vel=(0, 0, 1)):
         groups = [all_sprites, projectiles]
         super().__init__(groups[0])
         for group in groups[1:]:        
             self.add(group)
-        image = load_image('bullet.png')
+        image = load_image(os.path.join('items', 
+                                        os.path.join(t['ImageFold'], 
+                                        t['ImageStates']['default'][0])))
         self.image = image
         self.mainImage = image
         self.rect = self.image.get_rect().move(pos[0], pos[1])
@@ -191,7 +208,8 @@ class Entity(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.speed = 1.5
         self.team = 0
-        self.health = self.maxHealth = 100 
+        self.health = 100
+        self.maxHealth = 110 
         self.tile = False
         
     def update(self):
@@ -208,8 +226,8 @@ class Entity(pygame.sprite.Sprite):
                 
     def heal(self, hp):
         self.health += hp
-        if self.health > self.maxHelath*1.1:
-            self.health = self.maxHelath*1.1
+        if self.health > self.maxHealth:
+            self.health = self.maxHealth
                    
                             
 class Tile(Entity):
@@ -237,36 +255,89 @@ class Solid(Tile):
      
      
 class Creature(Entity):
-    def __init__(self, pos, groups, image):
+    def __init__(self, pos, groups, foldier):
+        self.foldier = foldier
+        self.direction = '01'
+        image = load_image(os.path.join(foldier, self.direction + '.png'))
         super().__init__(image, groups)
         self.frames = []
-        self.cut_sheet(image, 3, 1)
+        self.cut_sheet(image, 1, 1)
         self.cur_frame = 0
         frame = self.frames[self.cur_frame]        
-        self.image = pygame.transform.scale(self.frames[self.cur_frame], (60, 60))
+        self.image = pygame.transform.scale(frame, (60, 60))
         self.rect = self.image.get_rect().move(pos[0], pos[1])  
         self.items = Inventory(self)
         i = Item(game_data.ItemStats['Bgun'], ('onGround', (60, 60)))
         i.showcase.kill()
         self.items.add(i)
+        self.isShooting = False
+        self.x, self.y = self.rect.x, self.rect.y
         
     def AI(self):
         vel = [0, 0, 1]
         while vel == [0, 0, 1]:
-            vel = [random.randint(-1, 1), random.randint(-1, 1), 1]
+            a = random.randint(-1, 1)
+            b = random.randint(0, 1)
+            vel[b] = a
+        direction = str(-vel[1]) + str(vel[0])
         self.shoot(vel, 0)
             
     def move(self, vel):
         self.rect.x += vel[0] * self.speed
         self.rect.y += vel[1] * self.speed
+        direction = str(-vel[1]) + str(vel[0])
+        self.x, self.y = self.rect.x, self.rect.y
+        if direction not in ['00', '11', '-11', '1-1', '-1-1']:
+            self.direction = direction
+        if self.isShooting:
+            b = 'shoot'
+        else:
+            b = ''
+        image = load_image(os.path.join(self.foldier, b + self.direction + '.png'))
+        self.frames = []
+        if self.isShooting:
+            a = 3
+        else:
+            a = 1
+        self.cut_sheet(image, a, 1)
+        self.cur_frame = 0
+        frame = self.frames[self.cur_frame]        
+        self.image = pygame.transform.scale(frame, (60, 60))
+        self.rect = self.image.get_rect().move(self.x, self.y)  
         
     def shoot(self, vel, team):
         self.items.use(vel)
-        
-    def update(self): 
-        self.cur_frame = (self.cur_frame + 1) % len(self.frames)
+        self.x, self.y = self.rect.x, self.rect.y
+        self.direction = str(-vel[1]) + str(vel[0])
+        self.isShooting = True
+        b = 'shoot'
+        image = load_image(os.path.join(self.foldier, b + self.direction + '.png'))
+        self.frames = []
+        a = 3
+        self.cut_sheet(image, a, 1)
+        self.cur_frame = 0
         frame = self.frames[self.cur_frame]        
-        self.image = pygame.transform.scale(self.frames[self.cur_frame], (60, 60))  
+        self.image = pygame.transform.scale(frame, (60, 60))
+        self.rect = self.image.get_rect().move(self.x, self.y)  
+        
+    def update_img(self):
+        self.cur_frame = self.cur_frame + 1 
+        self.x, self.y = self.rect.x, self.rect.y
+        if self.cur_frame > 8:
+            self.isShooting = False
+            image = load_image(os.path.join(self.foldier, self.direction + '.png'))
+            self.frames = []
+            self.cut_sheet(image, 1, 1)
+            self.cur_frame = 0
+            frame = self.frames[self.cur_frame]        
+            self.image = pygame.transform.scale(self.frames[self.cur_frame], (60, 60))
+        else:
+            frame = self.frames[self.cur_frame%len(self.frames)]        
+            self.image = pygame.transform.scale(frame, (60, 60)) 
+        self.rect = self.image.get_rect().move(self.x, self.y)  
+        
+    def update(self):
+        self.update_img()
         if pygame.sprite.spritecollideany(self, solid):
             wall = pygame.sprite.spritecollideany(self, solid)
             if wall != self:
@@ -277,7 +348,8 @@ class Creature(Entity):
                 self.health -= p.damage
                 p.kill()
         if self.health > 0: 
-            pygame.draw.rect(screen, (200, 30, 30), pygame.Rect(self.rect.x, self.rect.y+55, int(self.health*60/100), 7))
+            pygame.draw.rect(screen, (200, 30, 30), pygame.Rect(self.rect.x, self.rect.y+55, 
+                                                                int(self.health*60/100), 7))
         else:
             self.onDeath()
             
@@ -289,10 +361,13 @@ class Creature(Entity):
 class Player(Creature):
     image = load_image('hero.png')
     def __init__(self, pos, groups):
-        super().__init__(pos, groups, Player.image)
+        global hero_alive
+        super().__init__(pos, groups, 'hero')
         self.team = 1     
         self.vel = 1
+        self.speed = 1.75
         self.items = PlayerInventory(self)
+        hero_alive = True
         
     def AI(self):
         vel = [0, 0, 1]
@@ -306,6 +381,7 @@ class Player(Creature):
             vel[1] = 1
         if vel != [0, 0, 1] and bool(self.vel):
             self.items.use(vel)
+            direction = str(-vel[1]) + str(vel[0])
         
     def control(self):
         vel = [0, 0]
@@ -320,12 +396,14 @@ class Player(Creature):
         self.move(vel)
         
     def onDeath(self):
+        global hero_alive
         self.vel = 0
+        hero_alive = False
         
         
 class Enemie(Creature):
     def __init__(self, pos, t):
-        super().__init__(pos, [all_sprites, solid, enemies], Player.image)
+        super().__init__(pos, [all_sprites, solid, enemies], os.path.join('enemies', t))
         
  
 def load_level(filename):
@@ -503,7 +581,8 @@ class Inventory:
             if c[0] == 'Heal':
                 self.host.heal(c[1])
             elif c[0] == 'Shoot':
-                Projectile((self.host.rect.x, self.host.rect.y), self.host.team, data)
+                Projectile((self.host.rect.x, self.host.rect.y), self.host.team, 
+                           self.inUse.stats, data)
         except Exception as e:
             pass
                 
@@ -535,10 +614,17 @@ class PlayerInventory(Inventory):
         for i in range(len(self.items)):
             self.items[i].showcase.rect.center = self.slots[i].rect.center
         
+    def copy(self):
+        items = PlayerInventory(None)
+        for i in self.items:
+            items.items.append(i.copy())
+        return items
+        
 
 class Item:
     def __init__(self, stats, state):
         self.stats = stats
+        self.state = state
         self.showcase = ItemShowcase(stats, state, self)
         self.host = None
         
@@ -555,13 +641,41 @@ class Item:
             self.host.change()
             self.reset()
         return list(self.stats['OnUse'])[:-1]
+    
+    def copy(self):
+        return Item(self.stats, self.state)
         
 
 def enemies_display():
     font = pygame.font.Font(None, 100)
-    text = font.render(str(len(enemies)), 1, (255, 0, 0))
-    screen.blit(text, (75, 0))    
+    a = len(enemies)
+    if a > 0 and hero_alive:
+        text = font.render(str(a), 1, (255, 0, 0))
+        screen.blit(text, (100, 0)) 
+    
 
+class EnemiesDislay(pygame.sprite.Sprite):
+    def __init__(self):
+        super().__init__(data_shown)
+        self.image = load_image('enemiesremaining.png')
+        self.rect = self.image.get_rect()
+        self.rect.x, self.rect.y = 5, 5
+        
+    def update(self):
+        if hero_alive:
+            if not bool(len(enemies)):
+                self.image = load_image('levelclear.png')
+                self.rect = self.image.get_rect()
+                self.rect.x, self.rect.y = 5, 5
+        else:
+            self.image = load_image('gameover.png')
+            self.rect = self.image.get_rect()
+            self.rect.x, self.rect.y = 5, 5
+       
+            
+display = EnemiesDislay()
+
+inventory_hero = PlayerInventory(None)
 
 start_screen()
 StartGame(600, 600, 1)
