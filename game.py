@@ -197,6 +197,43 @@ class Projectile(pygame.sprite.Sprite):
             self.kill()
         if (x - self.pos[0])**2 + (y - self.pos[1])**2 > (scale * self.maxDistance)**2:
             self.kill()
+            
+    def kill(self):
+        explode(self.rect.center)
+        super().kill()
+        
+        
+class explode(pygame.sprite.Sprite):
+    def __init__(self, ce):
+        super().__init__(all_sprites)
+        image = load_image(os.path.join('items', os.path.join('Bgun', 'explosionsmall.png')))
+        self.frames = []
+        self.cut_sheet(image, 5, 1)
+        self.cur_frame = 0
+        frame = self.frames[self.cur_frame]        
+        self.image = pygame.transform.scale(frame, (60, 60))
+        self.rect = self.image.get_rect()
+        self.c = ce
+        self.rect.center = self.c
+        
+    def update(self):
+        self.cur_frame += 1
+        if self.cur_frame < 5:
+            frame = self.frames[self.cur_frame]        
+            self.image = pygame.transform.scale(frame, (60, 60))
+            self.rect = self.image.get_rect()
+            self.rect.center = self.c
+        else:
+            self.kill()
+        
+    def cut_sheet(self, sheet, columns, rows):
+        self.rect = pygame.Rect(0, 0, sheet.get_width() // columns,
+                                sheet.get_height() // rows)
+        for j in range(rows):
+            for i in range(columns):
+                frame_location = (self.rect.w * i, self.rect.h * j)
+                self.frames.append(sheet.subsurface(pygame.Rect(
+                    frame_location, self.rect.size)))    
          
         
 class Entity(pygame.sprite.Sprite):
